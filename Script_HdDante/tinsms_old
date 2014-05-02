@@ -1,0 +1,293 @@
+#!/usr/bin/perl -w
+
+############################################################################
+#    Copyright (C) 2004-2005 by Fabio Marzocca                             #
+#    thesaltydog AT gmail.com                                                 #
+#                                                                          #
+#    This program is free software; you can redistribute it and#or modify  #
+#    it under the terms of the GNU General Public License as published by  #
+#    the Free Software Foundation; either version 2 of the License, or     #
+#    (at your option) any later version.                                   #
+#                                                                          #
+#    This program is distributed in the hope that it will be useful,       #
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of        #
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         #
+#    GNU General Public License for more details.                          #
+#                                                                          #
+#    You should have received a copy of the GNU General Public License     #
+#    along with this program; if not, write to the                         #
+#    Free Software Foundation, Inc.,                                       #
+#    59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             #
+############################################################################
+
+# v. 0.2.0 - 31 agosto 2004
+#
+#
+# v. 0.2.1 - 28 novembre 2004
+# migliorata la procedura di login
+#
+# v. 1.0.0 - 10 dicembre 2004
+# abilitato cookie in memoria ram
+#
+# v. 1.1.0 - 20 dicembre 2004
+# migliorate le routine di error-trapping
+#
+#
+# v. 1.1.1 - 23 dicembre 2004
+# rimosso warning per input outside form
+#
+#
+# v. 1.2.0 - 28 dicembre 2004
+# eliminato bug da libhtml-parser-perl 3.43
+#
+# v.1.2.1 - 29 dicembre 2004
+# inserita compatibilita' debian woody-sarge-sid
+#
+# v. 1.3.0 - 4 gen. 2005 (con la collaborazione di forums.gentoo.org)
+# - GNU license
+# - inserito +39 di default
+# - controllo sulla lunghezza del testo
+#
+# v. 1.3.5 - 5 gen. 2005
+# - meccanismo di autenticazione piu' 'furbo'!
+# - aggiunta visualizzazione sms inviati
+#
+# v. 1.4.0 - 10 gen. 2005 (con la collaborazione di Sergio Giuffrida (takli)
+# - implementata opzione per uso da pipe (file o stdin)
+#
+# v. 1.5.0 - 28 mar. 2005
+# - Inserita rubrica grazie a snake111
+# - Possibilità di avere la rubrica in qualsiasi punto del filesystem. (mattions)
+#       http://forums.gentoo.org/viewtopic-t-273527.html
+#
+#v 1.6.0 - 4 agosto 2005
+#   - modifiche per aggiornamento sito communicator.virgilio.it
+#
+##########################################
+#Please change $userid and $password variables with your data!
+#
+# -----------------------------------------------------------------
+
+my $userid='tocas66@tin.it'; 		#<---------modificare!!! es: 'mario@tin.it'
+my $password='argout66pepe'; 				#<-----------modificare!!!
+
+my $version = '1.6.0';
+my $res="";
+my $LogOff = "http://communicator.virgilio.it/AAA/sign_out.htm";
+my $OK = 1;
+my $NOTOK= 0;
+my $number ="";
+my $text = "";
+my $i= 1;
+my $rubrica= "/home/fabio/tinrubrica";  #Inserite il Path completo dove mettete il file
+
+#Il file deve essere fatto in questo modo [senza il cancelletto davanti al nome]
+
+# tizio    3280123456
+# caio     3400123456
+# pluto    3330123456
+
+# Per chi utilizza sistemi winzozz ..esempio ...[notate il doppio backslash "\\" ..]
+# nn testato ma dovrebbe andare :-)
+# my $rubrica= "C:\\Documents and Settings\\pippo\\Documenti\\rubrica
+
+use LWP::UserAgent;
+use LWP::Simple;
+
+my $usage = 'tinsms v. '.$version.'
+uso #1: tinsms numero \'messaggio da inviare\'
+
+NOTA: il numero puo\' essere comprensivo di prefisso internazionale.
+     Se omesso, si intende per default +39 (Italia).
+
+Esempio: tinsms 34011111111 \'Arrivo fra 10 minuti.\'
+        tinsms +13019999999 \'I will be there in 10 minutes.\'
+
+uso #2: tinsms -i < [FILE]|[STDIN]
+  tinsms -i 3401111111 < [FILE]|[STDIN]
+
+uso #3: tinsms nome_contatto \'messaggio da inviare\'
+
+richiede un file chiamato strutturato nel modo seguente:
+
+------inizio-------
+tizio    3280123456
+caio     3400123456
+pluto    3330123456
+
+-------fine--------
+IMPORTANTE: lasciare una linea vuota alla fine del file!
+- è sconsigliato usare tabulazioni per indendare la rubrica.
+Il nome del file e la posizione assoluta dello stesso sono da definire nello script.
+';
+##########################################################################################???
+
+sub Authenticate()
+{
+$ua = LWP::UserAgent->new();
+$ua->cookie_jar({});
+$ua->agent('Mozilla/5.0');
+
+$res = $ua->get("http://communicator.virgilio.it/asp/login.asp?pop_login=".$userid."&password=".$password."&js=1&status=DA_HOMEPAGE");
+
+if (!($res->is_success)) {
+print "tinsms: Non riesco ad accedere alla pagina di login!\n";
+  exit(1);
+  }
+
+if (!($res->content =~ /loadWP.asp/)) {
+  print "tinsms: Errore di login. Verifica userid e password!\n";
+  exit(1);
+  }
+######################################
+return $ua;
+
+# ------------------------------------------------
+
+}
+
+sub InviaSMS()
+
+{
+$res = $ua->get('http://gsmailmd.umail.virgilio.it:8080/supermail/controller?username='.$userid);
+if (!($res->content =~ /Scegli un destinatario/)) {
+  print "tinsms: Non riesco ad accedere al modulo di invio!\n";
+  return $NOTOK;
+  }
+
+
+if (substr($number,0,1) ne '+')
+  {
+     $number = '0039'.$number;
+  }
+else {
+	substr($number,0,1,"00");
+ }
+
+$res=$ua->post('http://gsmailmd.umail.virgilio.it:8080/supermail/controller?username='.$userid.'&recipient='.$number.'&testo='.$text.'&action=sendsms');
+               
+        if ($res->content =~/Messaggio inviato/) {
+		return $OK;
+		}
+	else {
+		return $NOTOK;
+		}
+
+}
+
+sub show_n_msg
+{
+	$res = $ua->get('http://gsmailmd.umail.virgilio.it:8080/supermail/webinfo?action=info');	
+	if ($res->content =~/(Inviati oggi) <span class=\"testoarancio10verdana\">(\d+)/){ 
+		print $userid.": $1: $2/10 \n";
+  }
+
+}
+
+sub parseCmdLine
+{
+
+if ((@ARGV == 0) || (@ARGV>2)) {
+  print STDERR $usage, "\n";
+       exit 1;
+       }
+
+if ($ARGV[0] eq "-i") {
+  #input da STDIN
+  shift @ARGV;
+  $/=' ';
+       @arr=<STDIN>;
+       chomp @arr;
+       if (@ARGV==1) {$number=$ARGV[0];} else {$number=shift @arr;}
+       if (!($number =~/^[+-]?\d+$/)) {
+     #non ??? un numero!
+     print STDERR $usage, "\n";
+          exit 1;
+          }
+  $text=join ' ',@arr;
+       chomp $text;
+       $text=~s/\n/\ /g;
+       $text=~s/\s+/\ /g;
+       $/="\n";
+  return;
+  }
+
+#input da rubrica
+if (! (($ARGV[0] =~/^3/) || ($ARGV[0] =~/^\+/) || ($ARGV[0] =~/^0/))) {  #se il numero non e' rappresentato da cifre
+  open(RU,"<$rubrica");                        #apre il file "rubrica"
+  @RUarr=readline(RU);                        #mette nell'array "FILE" tutte le linee di rubrica
+  @RUarr=sort(@RUarr);                        #ordina l'array
+  close RU;                                   #chiude il file rubrica
+  open(R,">$rubrica");                         #apre rubrica in scrittura
+  print(R @RUarr);                            #riscrive la rubrica in ordine alfabetico
+  close R;                                    #chiude il file
+  @gr=grep(/$ARGV[0]/,@RUarr);                #cerca il nome contatto nell'array che contiene la rubrica
+  if(!(grep(/$ARGV[0]/,@RUarr))){              #controllo se esiste il nome in rubrica
+      print "nessun contatto trovato\n";
+      exit 1;
+  }
+
+  @wor=split(/\s+/,$gr[0]);                   #"wor[0]" -> nome contatto, "wor[1]" -> n??? contatto
+
+  if(sprintf(@gr)>1){                         #visualizza tutto l'output della ricerca in rubrica
+      print "-> ",$gr[0];
+      while($gr[$i]){
+     print "   ",$gr[$i];
+     $i++;
+      }
+  }
+  else{
+      print $wor[0], " ",$wor[1];             #visualizza i dati del contatto se la ricerca ??? univoca
+  }
+  print "\n[INVIO] per inviare sms al contatto selezionato, qualsiasi altro tasto per uscire: ";
+  $line=<STDIN>;
+  if ($line =~ /^\n/){
+      $number=$wor[1];
+      @pr=split(/\\\n/,$ARGV[1]);             #spezza il messaggio eliminando gli eventuali a capo
+      $text=join(' ', @pr);                   #ricompone il messaggio pulito da inviare
+      return;
+  }
+  else {exit 1;}
+}
+
+#input da linea di comando
+$number = $ARGV[0];
+$text = $ARGV[1];
+
+
+if (!($number =~/^[+-]?\d+$/)) {
+  #non ??? un numero!
+  print STDERR $usage, "\n";
+       exit 1;
+       }
+
+return;
+}
+
+####################################################################
+#####################################################################
+sub main
+{
+
+parseCmdLine();
+
+
+my $maxtext = 160 - (length($userid) + 3);
+if (length($text) > $maxtext) {
+ print STDERR "Testo troppo lungo! rimuovere ", length($text) - $maxtext, " caratteri\n";
+ exit 1;
+ }
+
+$ua = Authenticate();
+
+if (InviaSMS() == $NOTOK)
+  { print "Messaggio non inviato...\n"; }
+else
+  { print "Messaggio inviato con successo!\n";}
+
+show_n_msg;
+$ua->get($LogOff);
+
+}
+
+main();

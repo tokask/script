@@ -1,0 +1,359 @@
+#!/bin/sh
+#
+#
+# My Firewall                     This script starts or stops Firewall
+#
+# chkconfig: 2345 98 02
+# description: Connects to ADSL provider
+# My Netfilter v0.9
+# 
+#
+# Tocas 14/07/02 - v0.9
+# 	23/02/03 - v0.95
+#
+# TODO
+# A)	Ci sono alcune regole dove il
+# sorgente IP non è specificato perchè
+# assegnato dinamicamente da internet.
+# Verificare sicurezza. Di conseguenza c'è un login
+# errato da parte della catena INPUT.
+# B)	Sviluppare la parte di script per rilevare 
+# automaticamente le variabili $LOCIPx.
+# C)	Il tansparent proxy NON FUNZIONA !!
+#
+
+
+#---------- LO SCRIPT DEVE ESSERE AVVIATO DA ROOT
+if [ $UID != 0 ]; then
+  echo -e "\aNON SEI ROOT!"
+  exit 1
+fi
+
+#
+# Versione per connessione Adsl PPPoE su ETH1
+#
+# --> Variabili
+IPT="/sbin/iptables"
+INTMASK=255.255.255.0
+IFACE1="eth0"
+OUTFACE1="ppp0"		# ADSL
+OUTFACEY="ppp+"
+OUTFACE2="ippp0"	# ISDN
+OUTFACEX="ippp+"
+LOCIP1="192.168.0.2"
+LOCNET1="192.168.0.0/24"
+NAMESERVER="127.0.0.1"			# Cache DNS
+LOOPBACK=127.0.0.1
+P_PORTS="0:1023"			# Porte previlegiate
+NP_PORTS="1024:65535"			# Porte no previlegiate
+LVLLOG=alert				# Priorità syslog
+
+#-------- CODOCI ESCAPE COLORI
+  RED="\\033[1;31m"
+  GREEN="\\033[0;32m"
+  WHITE="\\033[0;39m"
+  CYAN="\\033[0;36m"
+  BLUE="\\033[1;34m"
+  ORANGE="\\033[0;33m"
+  YELLOW="\\033[1;33m"
+  MAGENTA="\\033[1;35m"
+
+###########################################################
+
+start() {
+
+
+#---------- ROUTING MOMENTANEO !! :-)
+
+route add default gw 192.168.0.254
+
+#---------- INSTALLAZIONE MODULI
+  /sbin/insmod ipt_LOG > /dev/null 2> /dev/null			#
+  /sbin/insmod ip_conntrack > /dev/null 2> /dev/null		#
+  /sbin/insmod ip_conntrack_ftp > /dev/null 2> /dev/null	#
+  /sbin/insmod ip_conntrack_irc > /dev/null 2> /dev/null	#
+  /sbin/insmod ipt_MASQUERADE > /dev/null 2> /dev/null		#
+  /sbin/insmod ipt_state > /dev/null 2> /dev/null		#
+  /sbin/insmod iptable_nat > /dev/null 2> /dev/null		#
+  /sbin/insmod ip_nat_ftp > /dev/null 2> /dev/null		#
+  /sbin/insmod ip_nat_irc > /dev/null 2> /dev/null		#
+
+#
+echo
+  echo -e "${YELLOW} ###### ATTIVAZIONE DEL FIREWALL...${WHITE}"
+  echo -e "Interfaccia locale ${BLUE}"
+  echo -e "$IFACE1${WHITE} : ${RED}$LOCIP1${WHITE}"
+  echo -e "Porte esterne filtrate ${RED}"
+  echo -e "$OUTFACE1${WHITE} : ${RED}$OUTFACE2${WHITE}"
+
+  
+#
+echo -n "Flushing delle regole: "
+$IPT -F INPUT > /dev/null
+$IPT -F OUTPUT > /dev/null
+$IPT -F FORWARD > /dev/null
+$IPT -t nat -F > /dev/null
+$IPT -t mangle -F > /dev/null
+
+## --> Eventuali flushing delle catene definite dall'utente
+#$IPT -t spoof1 -F > /dev/null
+#$IPT -t internet-in -F > /dev/null
+#$IPT -t internet-icmp -F > /dev/null
+#$IPT -t internet-tcp -F > /dev/null
+#$IPT -t internet-udp -F > /dev/null
+#
+
+echo -e "\t\t\t\t[ ${GREEN}OK ${WHITE}]"
+
+
+## -------- DEFINIZIONE CATENA GESTIONE SPOOFING
+$IPT -N spoof1
+$IPT -A spoof1 -j LOG --log-prefix "Spoofing in atto: " --log-level $LVLLOG
+$IPT -A spoof1 -j DROP
+#
+
+# Il transparent proxy è disattivato perche in questo modo non funziona - TODO
+#
+#echo -n "Masquerade,Trans-proxy e TOS : "
+# Attivo il proxy trasparente squid ( porta80 alla porta3128 )
+#$IPT -t nat -A PREROUTING -i $IFACE1 -p tcp -d ! $LOCIP1 --dport 80 -j REDIRECT --to-port 3128
+#$IPT -t nat -A PREROUTING -i $IFACE2 -p tcp -d ! $LOCIP2 --dport 80 -j REDIRECT --to-port 3128
+#
+
+# Mascheramento interfaccia esterna - NAT e DNAT 
+$IPT -t nat -A POSTROUTING -s $LOCNET1  -o $OUTFACE1 -j MASQUERADE
+$IPT -t nat -A PREROUTING -p tcp --dport 23 -i ppp0 -j DNAT --to 192.168.0.11:22
+#
+
+# Ottimizzazioni varie - Bit TOS
+$IPT -A PREROUTING -t mangle -p tcp --sport 20 -j TOS --set-tos Maximize-Throughput
+$IPT -A PREROUTING -t mangle -p tcp --sport 22 -j TOS --set-tos Minimize-Delay
+#echo -e "\t\t\t[ ${GREEN}OK ${WHITE}]"
+
+echo -n "Impostazioni delle regole di filtraggio : "
+## -------- REGOLE IN ENTRATA
+$IPT -P INPUT DROP
+$IPT -N internet-in
+#$IPT -A INPUT -i $IFACE1  -p udp --dport ! 138:139 -j LOG --log-prefix "Log_lan" --log-level info
+$IPT -A INPUT -i $IFACE1 -s 0/0 -j ACCEPT
+
+$IPT -A INPUT -i lo -j ACCEPT
+
+$IPT -A INPUT -i $OUTFACEX -s $LOCNET1 -j spoof1
+$IPT -A INPUT -i $OUTFACEY -s $LOCNET1 -j spoof1
+
+###
+$IPT -A INPUT -i $OUTFACEX -j internet-in
+$IPT -A INPUT -i $OUTFACEY -j internet-in
+### !!!!!WARNING!!!!! manca l'ip destinazione verificare sicurezza !!.
+
+### Protocolo IGMP
+#
+$IPT -A INPUT -j LOG --log-prefix "IGMP rifiutato: " --log-level $LVLLOG
+$IPT -A INPUT -i $OUTFACEX -p igmp -j DROP
+$IPT -A INPUT -i $OUTFACEY -p igmp -j DROP
+
+## -------- REGOLE CATENA INTERNET-IN ( ICMP, TCP, UDP)
+
+$IPT -N internet-icmp
+$IPT -N internet-tcp
+$IPT -N internet-udp
+
+# Accetta i paccheti da una connessione già stabilita.
+$IPT -A internet-in -m state --state ESTABLISHED,RELATED -j ACCEPT
+
+# Controlla il pacchetto in base al protocollo (tcp solo syn)
+$IPT -A internet-in -p icmp -j internet-icmp
+$IPT -A internet-in -p udp -j internet-udp
+$IPT -A internet-in -p tcp --syn -j internet-tcp
+
+# Il pacchetto che non soddisfa le regole è scartato dalla catena internet-in
+$IPT -A internet-in -d ! 224.0.0.1 -j LOG --log-prefix "Internet-in rifiutato: " --log-level $LVLLOG
+$IPT -A internet-in -j DROP
+
+# Catena ICMP, permessi solo tipi 0,3,8,11
+$IPT -A internet-icmp -p icmp --icmp-type 0 -j ACCEPT
+$IPT -A internet-icmp -p icmp --icmp-type 3 -j ACCEPT
+$IPT -A internet-icmp -p icmp --icmp-type 8 -j ACCEPT
+$IPT -A internet-icmp -p icmp --icmp-type 11 -j ACCEPT
+
+$IPT -A internet-icmp -j LOG --log-prefix "DROP_ICMP:" --log-level $LVLLOG
+$IPT -A internet-icmp -j DROP
+
+#Catena TCP SYN
+#
+# In questa catena devono essere abilitati i servizi che
+# devono avere accesso dall'esterno.
+#
+# °°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°
+ $IPT -A internet-tcp -p tcp --dport 22 -j ACCEPT
+# $IPT -A internet-tcp -p tcp --dport 80 -j ACCEPT
+ $IPT -A internet-tcp -p tcp --dport 113 -j REJECT
+# $IPT -A internet-tcp -p tcp --dport 119 -j ACCEPT
+# $IPT -A internet-tcp -p tcp --dport 443 -j ACCEPT
+# °°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°
+
+#
+$IPT -A internet-tcp -p tcp -j LOG --log-prefix "DROP_TCP_syn:" --log-level $LVLLOG
+$IPT -A internet-tcp -j DROP
+#
+
+# Filtraggio  UDP
+#
+$IPT -A internet-udp -m state -p udp --sport 520 --dport 520 --state NEW -j ACCEPT
+$IPT -A internet-udp -m state -p udp --sport 53 --dport 53 --state NEW -j ACCEPT
+#
+
+#
+$IPT -A internet-udp -j LOG --log-prefix "DROP_UDP: " --log-level $LVLLOG
+$IPT -A internet-udp -j DROP
+#
+
+## -------- REGOLE IN USCITA
+#
+$IPT -P OUTPUT DROP
+# Interfaccia locale verso la rete locale
+$IPT -A OUTPUT -o $IFACE1 -d 0/0 -j ACCEPT
+#
+
+# Traffico verso la rete esterna con IP esterno
+$IPT -A OUTPUT -o $OUTFACEX -j ACCEPT
+$IPT -A OUTPUT -o $OUTFACEY -j ACCEPT
+#
+### !!!!!WARNING!!!!! manca l'ip destinazione verificare sicurezza !!.
+
+# Accetta pacchetti locali per il loopback
+$IPT -A OUTPUT -o lo -j ACCEPT
+
+# Paranoia
+# Errore di route, pacchetti diretti alla rete locale attraverso l'interfaccia esterna
+$IPT -A OUTPUT -o $OUTFACEX -d $LOCNET1 -j LOG --log-prefix "Errore di routing" --log-level $LVLLOG
+$IPT -A OUTPUT -o $OUTFACEY -d $LOCNET1 -j LOG --log-prefix "Errore di routing" --log-level $LVLLOG
+#
+
+# Pacchetti alla lan locale verso l'esterno (MASQ overflow)
+$IPT -A OUTPUT -j LOG --log-prefix "Pkt anomalo in uscita: " --log-level $LVLLOG
+# ^^^^^^^^^^^^^ <<< non mi è chiaro (mancano dei parametri ?)
+
+## -------- REGOLE FORWARD
+
+$IPT -P FORWARD DROP
+
+# Accetta il forward dalla lan locale alla rete esterna
+$IPT -A FORWARD -i $IFACE1 -o $OUTFACE1 -s $LOCNET1 -j ACCEPT
+$IPT -A FORWARD -i $IFACE1 -o $OUTFACE2 -s $LOCNET1 -j ACCEPT
+#
+
+# Accetta il forward a tutti i pacchetti delle connessioni attive.
+$IPT -A FORWARD -m state -i $OUTFACE1 -d $LOCNET1 -o $IFACE1 --state ! NEW,INVALID -j ACCEPT
+$IPT -A FORWARD -m state -i $OUTFACE2 -d $LOCNET1 -o $IFACE1 --state ! NEW,INVALID -j ACCEPT
+#
+# Questa regola è stata inserita per aprire il DNAT (vedi inizio) nella catena FORWARD
+$IPT -A FORWARD -i $OUTFACE1 -d $LOCNET1 -o $IFACE1 -p tcp --dport 22 -j ACCEPT 
+#
+
+# I pacchetti che non rispettano le regole vengono loggati e scartati.
+$IPT -A FORWARD -j LOG --log-prefix "Pkt anomalo forward: " --log-level $LVLLOG
+#
+echo -e "\t[ ${GREEN}OK ${WHITE}]"
+
+###### Fine sessione catene firewall. ######
+
+# Abilito il routing
+echo "1" > /proc/sys/net/ipv4/ip_forward
+echo -n "Abilitazione routing : "
+echo -e "\t\t\t\t[ ${GREEN}OK ${WHITE}]"
+}
+
+#---------- STOP DEL FIREWALL
+stop() {
+  echo
+  echo "Disattivazione del Firewall in corso..."
+  $IPT -F
+  $IPT -P INPUT ACCEPT
+  $IPT -P OUTPUT ACCEPT
+  $IPT -P FORWARD DROP
+  $IPT -t nat -F
+  $IPT -t mangle -F
+
+  $IPT -X spoof1
+  $IPT -X internet-in
+  $IPT -X internet-tcp
+  $IPT -X internet-udp
+  $IPT -X internet-icmp
+  echo -n "Rimozione dei moduli necessari : "
+  /sbin/rmmod ipt_LOG > /dev/null 2> /dev/null
+  /sbin/rmmod ip_conntrack > /dev/null 2> /dev/null
+  /sbin/rmmod ip_conntrack_ftp > /dev/null 2> /dev/null
+  /sbin/rmmod ip_conntrack_irc > /dev/null 2> /dev/null
+  /sbin/rmmod ipt_MASQUERADE > /dev/null 2> /dev/null
+  /sbin/rmmod ipt_state > /dev/null 2> /dev/null
+  /sbin/rmmod iptable_nat > /dev/null 2> /dev/null
+  /sbin/rmmod ip_nat_ftp > /dev/null 2> /dev/null
+  /sbin/rmmod ip_nat_irc > /dev/null 2> /dev/null
+  echo -e "\t\t[ ${GREEN}OK ${WHITE}]"
+#  echo -n "Disattivazione IP forwarding : "
+#  echo 0 > /proc/sys/net/ipv4/ip_forward
+#  echo -e "\t\t\t[ ${GREEN}OK ${WHITE}]"
+  echo -e "${YELLOW}ATTENZIONE: IL FIREWALL NON E' PIU' OPERATIVO - TUTTE LE PORTE APERTE${WHITE}"
+}
+
+#---------- CHIUSURA DEL FIREWALL
+close() {
+  echo "Chiusura del Firewall in corso..."
+  $IPT -F
+  $IPT -P INPUT DROP
+  $IPT -P OUTPUT DROP
+  $IPT -P FORWARD DROP
+  $IPT -t nat -F
+  $IPT -t mangle -F
+  $IPT -X spoof1
+  $IPT -X internet-in
+  $IPT -X internet-tcp
+  $IPT -X internet-udp
+  $IPT -X internet-icmp
+
+  echo -n "Rimozione dei moduli necessari : "
+  /sbin/rmmod ipt_LOG > /dev/null 2> /dev/null
+  /sbin/rmmod ip_conntrack > /dev/null 2> /dev/null
+  /sbin/rmmod ip_conntrack_ftp > /dev/null 2> /dev/null
+  /sbin/rmmod ip_conntrack_irc > /dev/null 2> /dev/null
+  /sbin/rmmod ipt_MASQUERADE > /dev/null 2> /dev/null
+  /sbin/rmmod ipt_state > /dev/null 2> /dev/null
+  /sbin/rmmod iptable_nat > /dev/null 2> /dev/null
+  /sbin/rmmod ip_nat_ftp > /dev/null 2> /dev/null
+  /sbin/rmmod ip_nat_irc > /dev/null 2> /dev/null
+  echo -e "\t\t[ ${GREEN}OK ${WHITE}]"
+  echo -n "Disattivazione IP forwarding : "
+  echo 0 > /proc/sys/net/ipv4/ip_forward
+  echo -e "\t\t\t\t\t[ ${GREEN}OK ${WHITE}]"
+  echo -e "${YELLOW}ATTENZIONE: IL SISTEMA E' COMPLETAMENTE ISOLATO DAL FIREWALL${WHITE}"
+}
+
+#---------- IMPOSTAZIONE ATTUALE DEL FIREWALL
+status() {
+  echo "Impostazione firewall : "
+  $IPT --list
+}
+
+case "$1" in
+  start)
+        start
+        ;;
+
+  stop)
+        stop
+        ;;
+
+  close)
+        close
+        ;;
+  status)
+        iptables -L -v -n
+        ;;
+  *)
+        echo "Usage: $0 {start|stop|close|status}"
+        exit 1
+	;;
+esac
+exit 0

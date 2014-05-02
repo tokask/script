@@ -1,0 +1,5 @@
+#/bin/sh
+#
+Eterm -x --scrollbar no --trans --geometry 110x10+100+550 -a"toggles buttonbar false" &
+#
+#

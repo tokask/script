@@ -1,0 +1,7 @@
+#!/bin/sh
+#Huawei 353 unlock by ToKasK
+
+DEVICE=/dev/ttyUSB0
+
+/bin/stty -F $DEVICE 9600 opost onlcr
+/bin/echo 'AT^CARDLOCK="57803587"' >> $DEVICE

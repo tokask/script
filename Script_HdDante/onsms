@@ -1,0 +1,16 @@
+#!/bin/bash
+# by Tocas 2005
+#
+NOW=$(date +%Y-%m-%d)
+HOUR=$(date +%H:%M)
+SMS='/home/tocas/script/tinsms'
+NUMB='+393498197765'
+IP=$(wget -q -O - http://ipid.shat.net/iponly | grep ^[0-9]) &> /dev/null
+
+$SMS $NUMB 'Dante started on '$NOW'    H'$HOUR'        '$IP'' > /var/log/sms.log 2>&1
+
+
+
+
+
+

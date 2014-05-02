@@ -1,0 +1,9 @@
+#! /bin/sh
+
+if [ -x /usr/bin/rsync ]
+
+then
+
+	#rsync -zav snff::maildir /home/user2/Rsync/TocasMailSnff
+        rsync -avz -e ssh tocas@snff:/home/tocas/.maildir /home/user2/Rsync/TocasMailSnff
+fi

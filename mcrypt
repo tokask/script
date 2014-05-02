@@ -1,0 +1,6 @@
+#!/bin/bash
+
+MYDEV=/dev/mmcblk0p1
+
+/usr/bin/truecrypt --mount $MYDEV
+
