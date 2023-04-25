@@ -57,7 +57,7 @@
 #
 # v. 1.5.0 - 28 mar. 2005
 # - Inserita rubrica grazie a snake111
-# - Possibilit‡ di avere la rubrica in qualsiasi punto del filesystem. (mattions)
+# - Possibilit√† di avere la rubrica in qualsiasi punto del filesystem. (mattions)
 #       http://forums.gentoo.org/viewtopic-t-273527.html
 #
 #v 1.6.0 - 4 agosto 2005
@@ -72,7 +72,7 @@
 # -----------------------------------------------------------------
 
 my $userid='tocas66@tin.it'; 		#<---------modificare!!! es: 'mario@tin.it'
-my $password='argout66pepe'; 				#<-----------modificare!!!
+my $password='xxxxx'; 				#<-----------modificare!!!
 
 my $version = '1.6.0';
 my $res="";
@@ -120,7 +120,7 @@ pluto    3330123456
 
 -------fine--------
 IMPORTANTE: lasciare una linea vuota alla fine del file!
-- Ë sconsigliato usare tabulazioni per indendare la rubrica.
+- √® sconsigliato usare tabulazioni per indendare la rubrica.
 Il nome del file e la posizione assoluta dello stesso sono da definire nello script.
 ';
 ##########################################################################################???
